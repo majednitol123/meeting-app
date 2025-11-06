@@ -28,14 +28,6 @@ export const Navbar = () => {
           <UserButton afterSignOutUrl="/sign-in" />
         </SignedIn>
 
-        <Link
-          href={links.sourceCode}
-          target="_blank"
-          rel="noreferrer noopener"
-          title="Source Code"
-        >
-          <Image src="/icons/github.svg" alt="GitHub" height={80} width={80} />
-        </Link>
 
         <MobileNav />
       </div>
