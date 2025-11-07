@@ -46,6 +46,7 @@ export const MeetingRoom = () => {
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
+  
   const CallLayout = () => {
     // ✅ Mobile layout (70% screen share + 30% participants)
     if (isMobile) {
