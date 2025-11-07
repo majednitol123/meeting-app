@@ -46,19 +46,19 @@ export const MeetingRoom = () => {
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
-
+  
   const CallLayout = () => {
     // ✅ Mobile layout (70% screen share + 30% participants)
     if (isMobile) {
       return (
         <div className="flex flex-col w-full h-full bg-black">
           {/* Shared screen (70%) */}
-          <div className="flex h-[80%] w-full justify-center items-center bg-black">
+          <div className="flex h-[100%] w-full justify-center items-center bg-black">
             <SpeakerLayout participantsBarPosition="bottom" />
           </div>
 
           {/* Participants (30%) horizontally scrollable */}
-          <div className="flex h-[20%] w-full bg-[#111] border-t border-gray-800 overflow-x-auto overflow-y-hidden hide-scrollbar">
+          <div className="flex h-[0%] w-full bg-[#111] border-t border-gray-800 overflow-x-auto overflow-y-hidden hide-scrollbar">
             <div className="flex flex-nowrap items-center gap-3 p-2 w-max">
               <CallParticipantsList onClose={() => {}} />
             </div>
