@@ -37,13 +37,7 @@ export const siteConfig: Metadata = {
     "eslint",
     "html",
     "css",
-  ] as Array<string>,
-  authors: {
-    name: "Sanidhya Kumar Verma",
-    url: "https://github.com/sanidhyy",
-  },
+  ] as Array<string>
 } as const;
 
-export const links = {
-  sourceCode: "https://github.com/sanidhyy/zoom-clone",
-} as const;
+

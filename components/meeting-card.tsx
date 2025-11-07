@@ -40,6 +40,7 @@ export const MeetingCard = ({
             <p className="text-base font-normal">{date}</p>
           </div>
         </div>
+        
       </article>
       <article className={cn("relative flex justify-center", {})}>
         <div className="relative flex w-full max-sm:hidden">
