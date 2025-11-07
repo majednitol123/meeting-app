@@ -19,7 +19,7 @@ export const Navbar = () => {
         />
 
         <p className="text-[26px] font-extrabold text-white max-sm:hidden">
-          AYAT
+          Yoom
         </p>
       </Link>
 
