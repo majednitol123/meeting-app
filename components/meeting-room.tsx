@@ -8,7 +8,6 @@ import {
   PaginatedGridLayout,
   SpeakerLayout,
   useCallStateHooks,
-  useCall,
 } from "@stream-io/video-react-sdk";
 import { LayoutList, Users } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -34,20 +33,20 @@ export const MeetingRoom = () => {
   const [layout, setLayout] = useState<CallLayoutType>("speaker-left");
   const [isMobile, setIsMobile] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
-  const [isSharingActive, setIsSharingActive] = useState(false);
 
   const { useCallCallingState } = useCallStateHooks();
-  const call = useCall();
   const callingState = useCallCallingState();
   const isPersonalRoom = !!searchParams.get("personal");
 
-  // ✅ Handle screen resize/orientation
+  // ✅ Detect mobile and orientation
   useEffect(() => {
     const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
       setIsLandscape(window.innerWidth > window.innerHeight);
     };
     handleResize();
+
     window.addEventListener("resize", handleResize);
     window.addEventListener("orientationchange", handleResize);
     return () => {
@@ -56,34 +55,10 @@ export const MeetingRoom = () => {
     };
   }, []);
 
-  // ✅ Detect if someone is sharing their screen (new Stream SDK)
-  useEffect(() => {
-    if (!call) return;
-
-    const handleUpdate = () => {
-      const participants = Array.from(call.state.participants.values());
-      const sharing = participants.some(
-        (p) => p.getTrack("screen_share")?.isPublished
-      );
-      setIsSharingActive(sharing);
-    };
-
-    call.on("participant_updated", handleUpdate);
-    call.on("participant_joined", handleUpdate);
-    call.on("participant_left", handleUpdate);
-    handleUpdate();
-
-    return () => {
-      call.off("participant_updated", handleUpdate);
-      call.off("participant_joined", handleUpdate);
-      call.off("participant_left", handleUpdate);
-    };
-  }, [call]);
-
-  // ✅ Auto fullscreen logic
+  // ✅ Auto fullscreen ONLY for mobile
   useEffect(() => {
     const enterFullscreen = async () => {
-      if (!document.fullscreenElement && isMobile && (isLandscape || isSharingActive)) {
+      if (!document.fullscreenElement && isMobile && isLandscape) {
         try {
           await document.documentElement.requestFullscreen();
         } catch (err) {
@@ -93,7 +68,7 @@ export const MeetingRoom = () => {
     };
 
     const exitFullscreen = async () => {
-      if (document.fullscreenElement && (!isMobile || (!isLandscape && !isSharingActive))) {
+      if (document.fullscreenElement && (!isMobile || !isLandscape)) {
         try {
           await document.exitFullscreen();
         } catch (err) {
@@ -102,14 +77,16 @@ export const MeetingRoom = () => {
       }
     };
 
-    if (isMobile && (isLandscape || isSharingActive)) enterFullscreen();
-    else exitFullscreen();
-  }, [isMobile, isLandscape, isSharingActive]);
+    if (isMobile) {
+      if (isLandscape) enterFullscreen();
+      else exitFullscreen();
+    }
+  }, [isMobile, isLandscape]);
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
-  // ✅ Layout rendering logic
   const CallLayout = () => {
+    // ✅ Mobile layout
     if (isMobile) {
       return (
         <div
@@ -117,15 +94,17 @@ export const MeetingRoom = () => {
             isLandscape ? "justify-center items-center" : ""
           }`}
         >
+          {/* Fullscreen video in landscape */}
           <div
             className={`flex ${
-              isLandscape || isSharingActive ? "h-full" : "h-[100%]"
+              isLandscape ? "h-full" : "h-[100%]"
             } w-full justify-center items-center bg-black`}
           >
             <SpeakerLayout participantsBarPosition="bottom" />
           </div>
 
-          {!isLandscape && !isSharingActive && (
+          {/* Hide participants in landscape mode */}
+          {!isLandscape && (
             <div className="flex h-[0%] w-full bg-[#111] border-t border-gray-800 overflow-x-auto overflow-y-hidden hide-scrollbar">
               <div className="flex flex-nowrap items-center gap-3 p-2 w-max">
                 <CallParticipantsList onClose={() => {}} />
@@ -136,6 +115,7 @@ export const MeetingRoom = () => {
       );
     }
 
+    // ✅ Desktop layout (unchanged)
     switch (layout) {
       case "grid":
         return <PaginatedGridLayout />;
@@ -149,12 +129,15 @@ export const MeetingRoom = () => {
   return (
     <div className="relative h-screen w-full overflow-hidden pt-4 text-white bg-black">
       <style jsx global>{`
+        /* Hide Stream participant header + count on mobile */
         @media (max-width: 768px) {
           .str-video__participant-list-header,
           .str-video__participant-list-count {
             display: none !important;
           }
         }
+
+        /* Hide scrollbars for clean mobile view */
         .hide-scrollbar::-webkit-scrollbar {
           display: none;
         }
@@ -162,6 +145,8 @@ export const MeetingRoom = () => {
           -ms-overflow-style: none;
           scrollbar-width: none;
         }
+
+        /* Fullscreen background fix */
         :-webkit-full-screen {
           background-color: black;
         }
@@ -176,12 +161,13 @@ export const MeetingRoom = () => {
         }
       `}</style>
 
-      {/* Main video area */}
+      {/* Main content */}
       <div className="relative flex size-full items-center justify-center">
         <div className="flex size-full max-w-[1000px] items-center">
           <CallLayout />
         </div>
 
+        {/* Desktop participants sidebar */}
         <div
           className={cn("ml-2 hidden h-[calc(100vh_-_86px)]", {
             "show-block": showParticipants && !isMobile,
@@ -193,11 +179,12 @@ export const MeetingRoom = () => {
         </div>
       </div>
 
-      {/* Bottom controls */}
-      {!isLandscape && !isSharingActive && (
+      {/* Bottom controls — hidden in landscape mobile mode */}
+      {(!isMobile || !isLandscape) && (
         <div className="fixed bottom-0 flex w-full flex-wrap items-center justify-center gap-5 bg-[#0D1117]/80 backdrop-blur-md py-2">
           <CallControls onLeave={() => router.push("/")} />
 
+          {/* Layout switcher */}
           <DropdownMenu>
             <div className="flex items-center">
               <DropdownMenuTrigger
@@ -208,8 +195,8 @@ export const MeetingRoom = () => {
               </DropdownMenuTrigger>
             </div>
             <DropdownMenuContent className="border-dark-1 bg-dark-1 text-white">
-              {["Grid", "Speaker Left", "Speaker Right"].map((item) => (
-                <div key={item}>
+              {["Grid", "Speaker Left", "Speaker Right"].map((item, i) => (
+                <div key={item + "-" + i}>
                   <DropdownMenuItem
                     className="cursor-pointer"
                     onClick={() =>
@@ -228,6 +215,7 @@ export const MeetingRoom = () => {
 
           <CallStatsButton />
 
+          {/* Show/hide participants (desktop only) */}
           {!isMobile && (
             <button
               onClick={() => setShowParticipants((prev) => !prev)}
