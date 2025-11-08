@@ -41,14 +41,13 @@ export const MeetingRoom = () => {
   const callingState = useCallCallingState();
   const isPersonalRoom = !!searchParams.get("personal");
 
-  // ✅ Handle screen resize & orientation
+  // ✅ Handle screen resize/orientation
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
       setIsLandscape(window.innerWidth > window.innerHeight);
     };
     handleResize();
-
     window.addEventListener("resize", handleResize);
     window.addEventListener("orientationchange", handleResize);
     return () => {
@@ -57,33 +56,31 @@ export const MeetingRoom = () => {
     };
   }, []);
 
-  // ✅ Detect screen sharing (modern SDK)
+  // ✅ Detect if someone is sharing their screen (new Stream SDK)
   useEffect(() => {
     if (!call) return;
 
-    const handleParticipantUpdate = () => {
-      const participants = call.state.participants;
-      const someoneSharing = Array.from(participants.values()).some((p) =>
-        Array.from(p.tracks.values()).some(
-          (track) => track.trackType === "screen_share" && track.isPublished
-        )
+    const handleUpdate = () => {
+      const participants = Array.from(call.state.participants.values());
+      const sharing = participants.some(
+        (p) => p.getTrack("screen_share")?.isPublished
       );
-      setIsSharingActive(someoneSharing);
+      setIsSharingActive(sharing);
     };
 
-    call.on("participant_updated", handleParticipantUpdate);
-    call.on("participant_joined", handleParticipantUpdate);
-    call.on("participant_left", handleParticipantUpdate);
-    handleParticipantUpdate();
+    call.on("participant_updated", handleUpdate);
+    call.on("participant_joined", handleUpdate);
+    call.on("participant_left", handleUpdate);
+    handleUpdate();
 
     return () => {
-      call.off("participant_updated", handleParticipantUpdate);
-      call.off("participant_joined", handleParticipantUpdate);
-      call.off("participant_left", handleParticipantUpdate);
+      call.off("participant_updated", handleUpdate);
+      call.off("participant_joined", handleUpdate);
+      call.off("participant_left", handleUpdate);
     };
   }, [call]);
 
-  // ✅ Auto full-screen on mobile rotation or when screen sharing starts
+  // ✅ Auto fullscreen logic
   useEffect(() => {
     const enterFullscreen = async () => {
       if (!document.fullscreenElement && isMobile && (isLandscape || isSharingActive)) {
@@ -111,9 +108,8 @@ export const MeetingRoom = () => {
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
-  // ✅ Define layout logic
+  // ✅ Layout rendering logic
   const CallLayout = () => {
-    // ✅ Mobile layout
     if (isMobile) {
       return (
         <div
@@ -121,7 +117,6 @@ export const MeetingRoom = () => {
             isLandscape ? "justify-center items-center" : ""
           }`}
         >
-          {/* Video fills full screen in landscape or screen share mode */}
           <div
             className={`flex ${
               isLandscape || isSharingActive ? "h-full" : "h-[100%]"
@@ -130,7 +125,6 @@ export const MeetingRoom = () => {
             <SpeakerLayout participantsBarPosition="bottom" />
           </div>
 
-          {/* Hide participants in landscape or screen-share mode */}
           {!isLandscape && !isSharingActive && (
             <div className="flex h-[0%] w-full bg-[#111] border-t border-gray-800 overflow-x-auto overflow-y-hidden hide-scrollbar">
               <div className="flex flex-nowrap items-center gap-3 p-2 w-max">
@@ -142,7 +136,6 @@ export const MeetingRoom = () => {
       );
     }
 
-    // ✅ Desktop layout
     switch (layout) {
       case "grid":
         return <PaginatedGridLayout />;
@@ -156,15 +149,12 @@ export const MeetingRoom = () => {
   return (
     <div className="relative h-screen w-full overflow-hidden pt-4 text-white bg-black">
       <style jsx global>{`
-        /* Hide Stream participant header + count on mobile */
         @media (max-width: 768px) {
           .str-video__participant-list-header,
           .str-video__participant-list-count {
             display: none !important;
           }
         }
-
-        /* Hide scrollbars for clean mobile view */
         .hide-scrollbar::-webkit-scrollbar {
           display: none;
         }
@@ -172,8 +162,6 @@ export const MeetingRoom = () => {
           -ms-overflow-style: none;
           scrollbar-width: none;
         }
-
-        /* Fullscreen background fix */
         :-webkit-full-screen {
           background-color: black;
         }
@@ -188,13 +176,12 @@ export const MeetingRoom = () => {
         }
       `}</style>
 
-      {/* Main content */}
+      {/* Main video area */}
       <div className="relative flex size-full items-center justify-center">
         <div className="flex size-full max-w-[1000px] items-center">
           <CallLayout />
         </div>
 
-        {/* Desktop participants sidebar */}
         <div
           className={cn("ml-2 hidden h-[calc(100vh_-_86px)]", {
             "show-block": showParticipants && !isMobile,
@@ -206,12 +193,11 @@ export const MeetingRoom = () => {
         </div>
       </div>
 
-      {/* Bottom controls — hidden in landscape or screen share mobile mode */}
+      {/* Bottom controls */}
       {!isLandscape && !isSharingActive && (
         <div className="fixed bottom-0 flex w-full flex-wrap items-center justify-center gap-5 bg-[#0D1117]/80 backdrop-blur-md py-2">
           <CallControls onLeave={() => router.push("/")} />
 
-          {/* Layout switcher */}
           <DropdownMenu>
             <div className="flex items-center">
               <DropdownMenuTrigger
@@ -222,8 +208,8 @@ export const MeetingRoom = () => {
               </DropdownMenuTrigger>
             </div>
             <DropdownMenuContent className="border-dark-1 bg-dark-1 text-white">
-              {["Grid", "Speaker Left", "Speaker Right"].map((item, i) => (
-                <div key={item + "-" + i}>
+              {["Grid", "Speaker Left", "Speaker Right"].map((item) => (
+                <div key={item}>
                   <DropdownMenuItem
                     className="cursor-pointer"
                     onClick={() =>
@@ -242,7 +228,6 @@ export const MeetingRoom = () => {
 
           <CallStatsButton />
 
-          {/* Show/hide participants (desktop only) */}
           {!isMobile && (
             <button
               onClick={() => setShowParticipants((prev) => !prev)}
