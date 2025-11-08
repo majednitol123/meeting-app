@@ -32,42 +32,90 @@ export const MeetingRoom = () => {
   const [showParticipants, setShowParticipants] = useState(false);
   const [layout, setLayout] = useState<CallLayoutType>("speaker-left");
   const [isMobile, setIsMobile] = useState(false);
+  const [isLandscape, setIsLandscape] = useState(false);
 
   const { useCallCallingState } = useCallStateHooks();
   const callingState = useCallCallingState();
   const isPersonalRoom = !!searchParams.get("personal");
 
+  // ✅ Detect mobile and orientation
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      setIsLandscape(window.innerWidth > window.innerHeight);
+    };
     handleResize();
+
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+    };
   }, []);
+
+  // ✅ Auto fullscreen ONLY for mobile
+  useEffect(() => {
+    const enterFullscreen = async () => {
+      if (!document.fullscreenElement && isMobile && isLandscape) {
+        try {
+          await document.documentElement.requestFullscreen();
+        } catch (err) {
+          console.warn("Fullscreen request failed:", err);
+        }
+      }
+    };
+
+    const exitFullscreen = async () => {
+      if (document.fullscreenElement && (!isMobile || !isLandscape)) {
+        try {
+          await document.exitFullscreen();
+        } catch (err) {
+          console.warn("Exit fullscreen failed:", err);
+        }
+      }
+    };
+
+    if (isMobile) {
+      if (isLandscape) enterFullscreen();
+      else exitFullscreen();
+    }
+  }, [isMobile, isLandscape]);
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
-  
   const CallLayout = () => {
-    // ✅ Mobile layout (70% screen share + 30% participants)
+    // ✅ Mobile layout
     if (isMobile) {
       return (
-        <div className="flex flex-col w-full h-full bg-black">
-          {/* Shared screen (70%) */}
-          <div className="flex h-[100%] w-full justify-center items-center bg-black">
+        <div
+          className={`flex flex-col w-full h-full bg-black transition-all duration-300 ${
+            isLandscape ? "justify-center items-center" : ""
+          }`}
+        >
+          {/* Fullscreen video in landscape */}
+          <div
+            className={`flex ${
+              isLandscape ? "h-full" : "h-[100%]"
+            } w-full justify-center items-center bg-black`}
+          >
             <SpeakerLayout participantsBarPosition="bottom" />
           </div>
 
-          {/* Participants (30%) horizontally scrollable */}
-          <div className="flex h-[0%] w-full bg-[#111] border-t border-gray-800 overflow-x-auto overflow-y-hidden hide-scrollbar">
-            <div className="flex flex-nowrap items-center gap-3 p-2 w-max">
-              <CallParticipantsList onClose={() => {}} />
+          {/* Hide participants in landscape mode */}
+          {!isLandscape && (
+            <div className="flex h-[0%] w-full bg-[#111] border-t border-gray-800 overflow-x-auto overflow-y-hidden hide-scrollbar">
+              <div className="flex flex-nowrap items-center gap-3 p-2 w-max">
+                <CallParticipantsList onClose={() => {}} />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       );
     }
 
-    // ✅ Desktop layout
+    // ✅ Desktop layout (unchanged)
     switch (layout) {
       case "grid":
         return <PaginatedGridLayout />;
@@ -97,6 +145,20 @@ export const MeetingRoom = () => {
           -ms-overflow-style: none;
           scrollbar-width: none;
         }
+
+        /* Fullscreen background fix */
+        :-webkit-full-screen {
+          background-color: black;
+        }
+        :-moz-full-screen {
+          background-color: black;
+        }
+        :-ms-fullscreen {
+          background-color: black;
+        }
+        :fullscreen {
+          background-color: black;
+        }
       `}</style>
 
       {/* Main content */}
@@ -117,55 +179,57 @@ export const MeetingRoom = () => {
         </div>
       </div>
 
-      {/* Bottom controls */}
-      <div className="fixed bottom-0 flex w-full flex-wrap items-center justify-center gap-5 bg-[#0D1117]/80 backdrop-blur-md py-2">
-        <CallControls onLeave={() => router.push("/")} />
+      {/* Bottom controls — hidden in landscape mobile mode */}
+      {(!isMobile || !isLandscape) && (
+        <div className="fixed bottom-0 flex w-full flex-wrap items-center justify-center gap-5 bg-[#0D1117]/80 backdrop-blur-md py-2">
+          <CallControls onLeave={() => router.push("/")} />
 
-        {/* Layout switcher */}
-        <DropdownMenu>
-          <div className="flex items-center">
-            <DropdownMenuTrigger
-              className="cursor-pointer rounded-2xl bg-[#19232D] px-4 py-2 hover:bg-[#4C535B]"
-              title="Call layout"
-            >
-              <LayoutList size={20} className="text-white" />
-            </DropdownMenuTrigger>
-          </div>
-          <DropdownMenuContent className="border-dark-1 bg-dark-1 text-white">
-            {["Grid", "Speaker Left", "Speaker Right"].map((item, i) => (
-              <div key={item + "-" + i}>
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  onClick={() =>
-                    setLayout(
-                      item.toLowerCase().replace(" ", "-") as CallLayoutType
-                    )
-                  }
-                >
-                  {item}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="border-dark-1" />
-              </div>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <CallStatsButton />
-
-        {/* Show/hide participants (desktop only) */}
-        {!isMobile && (
-          <button
-            onClick={() => setShowParticipants((prev) => !prev)}
-            title="Show participants"
-          >
-            <div className="cursor-pointer rounded-2xl bg-[#19232D] px-4 py-2 hover:bg-[#4C535B]">
-              <Users size={20} className="text-white" />
+          {/* Layout switcher */}
+          <DropdownMenu>
+            <div className="flex items-center">
+              <DropdownMenuTrigger
+                className="cursor-pointer rounded-2xl bg-[#19232D] px-4 py-2 hover:bg-[#4C535B]"
+                title="Call layout"
+              >
+                <LayoutList size={20} className="text-white" />
+              </DropdownMenuTrigger>
             </div>
-          </button>
-        )}
+            <DropdownMenuContent className="border-dark-1 bg-dark-1 text-white">
+              {["Grid", "Speaker Left", "Speaker Right"].map((item, i) => (
+                <div key={item + "-" + i}>
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onClick={() =>
+                      setLayout(
+                        item.toLowerCase().replace(" ", "-") as CallLayoutType
+                      )
+                    }
+                  >
+                    {item}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="border-dark-1" />
+                </div>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        {!isPersonalRoom && <EndCallButton />}
-      </div>
+          <CallStatsButton />
+
+          {/* Show/hide participants (desktop only) */}
+          {!isMobile && (
+            <button
+              onClick={() => setShowParticipants((prev) => !prev)}
+              title="Show participants"
+            >
+              <div className="cursor-pointer rounded-2xl bg-[#19232D] px-4 py-2 hover:bg-[#4C535B]">
+                <Users size={20} className="text-white" />
+              </div>
+            </button>
+          )}
+
+          {!isPersonalRoom && <EndCallButton />}
+        </div>
+      )}
     </div>
   );
 };
