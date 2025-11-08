@@ -41,11 +41,10 @@ export const MeetingRoom = () => {
   const callingState = useCallCallingState();
   const isPersonalRoom = !!searchParams.get("personal");
 
-  // ✅ Detect mobile + orientation
+  // ✅ Handle screen resize & orientation
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile(mobile);
+      setIsMobile(window.innerWidth < 768);
       setIsLandscape(window.innerWidth > window.innerHeight);
     };
     handleResize();
@@ -58,29 +57,36 @@ export const MeetingRoom = () => {
     };
   }, []);
 
-  // ✅ Detect screen sharing
+  // ✅ Detect screen sharing (modern SDK)
   useEffect(() => {
     if (!call) return;
-    const handleTrackStarted = (track: any) => {
-      if (track?.source === "screen_share") setIsSharingActive(true);
-    };
-    const handleTrackStopped = (track: any) => {
-      if (track?.source === "screen_share") setIsSharingActive(false);
+
+    const handleParticipantUpdate = () => {
+      const participants = call.state.participants;
+      const someoneSharing = Array.from(participants.values()).some((p) =>
+        Array.from(p.tracks.values()).some(
+          (track) => track.trackType === "screen_share" && track.isPublished
+        )
+      );
+      setIsSharingActive(someoneSharing);
     };
 
-    call.on("track.started", handleTrackStarted);
-    call.on("track.stopped", handleTrackStopped);
+    call.on("participant_updated", handleParticipantUpdate);
+    call.on("participant_joined", handleParticipantUpdate);
+    call.on("participant_left", handleParticipantUpdate);
+    handleParticipantUpdate();
 
     return () => {
-      call.off("track.started", handleTrackStarted);
-      call.off("track.stopped", handleTrackStopped);
+      call.off("participant_updated", handleParticipantUpdate);
+      call.off("participant_joined", handleParticipantUpdate);
+      call.off("participant_left", handleParticipantUpdate);
     };
   }, [call]);
 
-  // ✅ Auto fullscreen (mobile + landscape only)
+  // ✅ Auto full-screen on mobile rotation or when screen sharing starts
   useEffect(() => {
     const enterFullscreen = async () => {
-      if (!document.fullscreenElement && isMobile && isLandscape) {
+      if (!document.fullscreenElement && isMobile && (isLandscape || isSharingActive)) {
         try {
           await document.documentElement.requestFullscreen();
         } catch (err) {
@@ -88,8 +94,9 @@ export const MeetingRoom = () => {
         }
       }
     };
+
     const exitFullscreen = async () => {
-      if (document.fullscreenElement && (!isMobile || !isLandscape)) {
+      if (document.fullscreenElement && (!isMobile || (!isLandscape && !isSharingActive))) {
         try {
           await document.exitFullscreen();
         } catch (err) {
@@ -97,28 +104,14 @@ export const MeetingRoom = () => {
         }
       }
     };
-    if (isMobile) {
-      if (isLandscape) enterFullscreen();
-      else exitFullscreen();
-    }
-  }, [isMobile, isLandscape]);
 
-  // ✅ Auto rotate shared screen when in portrait
-  useEffect(() => {
-    const sharedScreen = document.querySelector(".str-video__screen-share");
-    if (!sharedScreen) return;
-
-    if (isMobile && !isLandscape && isSharingActive) {
-      // Apply rotation for portrait mode
-      sharedScreen.classList.add("rotate-screen-share");
-    } else {
-      // Remove rotation when not sharing or back to normal
-      sharedScreen.classList.remove("rotate-screen-share");
-    }
-  }, [isSharingActive, isMobile, isLandscape]);
+    if (isMobile && (isLandscape || isSharingActive)) enterFullscreen();
+    else exitFullscreen();
+  }, [isMobile, isLandscape, isSharingActive]);
 
   if (callingState !== CallingState.JOINED) return <Loader />;
 
+  // ✅ Define layout logic
   const CallLayout = () => {
     // ✅ Mobile layout
     if (isMobile) {
@@ -128,16 +121,17 @@ export const MeetingRoom = () => {
             isLandscape ? "justify-center items-center" : ""
           }`}
         >
+          {/* Video fills full screen in landscape or screen share mode */}
           <div
             className={`flex ${
-              isLandscape ? "h-full" : "h-[100%]"
+              isLandscape || isSharingActive ? "h-full" : "h-[100%]"
             } w-full justify-center items-center bg-black`}
           >
             <SpeakerLayout participantsBarPosition="bottom" />
           </div>
 
-          {/* Hide participants in landscape */}
-          {!isLandscape && (
+          {/* Hide participants in landscape or screen-share mode */}
+          {!isLandscape && !isSharingActive && (
             <div className="flex h-[0%] w-full bg-[#111] border-t border-gray-800 overflow-x-auto overflow-y-hidden hide-scrollbar">
               <div className="flex flex-nowrap items-center gap-3 p-2 w-max">
                 <CallParticipantsList onClose={() => {}} />
@@ -170,7 +164,7 @@ export const MeetingRoom = () => {
           }
         }
 
-        /* Hide scrollbars */
+        /* Hide scrollbars for clean mobile view */
         .hide-scrollbar::-webkit-scrollbar {
           display: none;
         }
@@ -180,24 +174,21 @@ export const MeetingRoom = () => {
         }
 
         /* Fullscreen background fix */
-        :-webkit-full-screen,
-        :-moz-full-screen,
-        :-ms-fullscreen,
+        :-webkit-full-screen {
+          background-color: black;
+        }
+        :-moz-full-screen {
+          background-color: black;
+        }
+        :-ms-fullscreen {
+          background-color: black;
+        }
         :fullscreen {
           background-color: black;
         }
-
-        /* 🔄 Auto rotate shared screen for portrait mobile */
-        .rotate-screen-share {
-          transform: rotate(90deg) scale(1.1);
-          transform-origin: center center;
-          transition: all 0.4s ease-in-out;
-          width: 100vh !important;
-          height: 100vw !important;
-          object-fit: contain !important;
-        }
       `}</style>
 
+      {/* Main content */}
       <div className="relative flex size-full items-center justify-center">
         <div className="flex size-full max-w-[1000px] items-center">
           <CallLayout />
@@ -215,11 +206,12 @@ export const MeetingRoom = () => {
         </div>
       </div>
 
-      {/* Bottom controls */}
-      {(!isMobile || !isLandscape) && (
+      {/* Bottom controls — hidden in landscape or screen share mobile mode */}
+      {!isLandscape && !isSharingActive && (
         <div className="fixed bottom-0 flex w-full flex-wrap items-center justify-center gap-5 bg-[#0D1117]/80 backdrop-blur-md py-2">
           <CallControls onLeave={() => router.push("/")} />
 
+          {/* Layout switcher */}
           <DropdownMenu>
             <div className="flex items-center">
               <DropdownMenuTrigger
@@ -250,6 +242,7 @@ export const MeetingRoom = () => {
 
           <CallStatsButton />
 
+          {/* Show/hide participants (desktop only) */}
           {!isMobile && (
             <button
               onClick={() => setShowParticipants((prev) => !prev)}
@@ -267,6 +260,3 @@ export const MeetingRoom = () => {
     </div>
   );
 };
-
-
-
